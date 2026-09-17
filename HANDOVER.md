@@ -1,7 +1,7 @@
 # 交接文档 / Handover — 项目 927
 
 > 记录时间：2026-09-17，更新于 2026-09-18
-> 状态：**两轮实验均已完成。当前有效结果是第 2 轮的 unified 模型。**
+> 状态：**防泄漏模型已训练并评估完成。test mAP50 = 0.8191（旧泄漏版 0.9262 已作废）。**
 > 用途：自己学习 + 随时可恢复执行。
 >
 > 📊 完整实验数据见 [`RESULTS.md`](RESULTS.md)
@@ -10,47 +10,64 @@
 
 ## 0. 最新进展（2026-09-18 更新）
 
-### ⚠️ 最重要的一件事：第 1 轮的 mAP50 = 0.9266 是虚高的
+### ⚠️ 最重要的一件事：早期 mAP50 = 0.9266 是虚高的，已修正
 
-实测发现 **PKU-Market-PCB 只有 10 块 PCB 母板**，每块母板合成 6 类缺陷。同母板的图在非缺陷区域**逐像素完全相同**（实测 0.00 灰阶差、0.0% 差异像素）。而第 1 轮用的是按类别随机划分，导致**同一块板同时进了 train 和 test** —— 模型可能是在认板子而不是认缺陷。
+实测发现 **PKU-Market-PCB 只有 10 块 PCB 母板**，每块母板用 Photoshop 合成 6 类缺陷。
+同母板的图在【非缺陷区域逐像素完全相同】（实测 0.00 灰阶差、0.0% 差异像素）。
 
-**已修复**：unified 数据集改为按母板 block 划分，并加了泄漏自检。**第 1 轮的数字不要再用于论文。**
+**早期用的是按类别分层随机划分，导致同一块板同时进了 train 和 test** ——
+模型可能是在认板子而不是认缺陷，指标虚高。
 
-### 本轮新增
+**已修正**：划分改为以「母板 block」为单位（整块板只进一个 split），
+固化在 `configs/pcb.yaml` 的 `template_blocks` / `block_split`，
+并在 `pcbvis/data_prep.py` 里加了**泄漏自检**（划分完自动检查母板是否跨 split）。
 
-| 内容 | 结果 |
+当前划分：**train 480（母板 1-6）/ val 90（母板 7-8）/ test 123（母板 9-10）**
+自检结果：跨 split 共用母板 = **无 ✅**
+
+### 泄漏到底虚高了多少（实测）
+
+同为 PKU-only、同一套超参、同为 val 指标，只差划分方式：
+
+| 指标 | 泄漏版 | 防泄漏版 | 差距 |
+|---|---|---|---|
+| mAP50 | 0.9262 | 0.7800 | **+0.1462** |
+| **Recall** | 0.8869 | **0.6384** | **+0.2485** |
+| Precision | 0.9416 | 0.8425 | +0.0992 |
+
+**泄漏主要虚高召回率（+24.9 点），精确率几乎看不出来。**
+模型"认得"见过的板子，把本该漏检的缺陷也找了出来。
+
+> ⚠️ **0.9262 不要再用于论文。**
+> 旧模型保留在 `results/train/pcb_yolo11n_LEAKY_backup/`，仅作对照，可随时删除。
+
+### 最终结果（test 集，母板 9-10，完全未见过）
+
+| 指标 | 值 |
 |---|---|
-| 数据集 B | **PCB-Defect 2025**（Mendeley DOI `10.17632/vdj74sngvn.1`，CC BY 4.0，230 张，真实化学蚀刻缺陷） |
-| 类别统一 | **7 类**。`missing_hole` 与 `missing_pad` 语义不同，**未合并**（已切图目视确认） |
-| unified 数据集 | train 641 / val 124 / **test_pku 123 / test_pcb2025 35**（两个独立测试集） |
-| unified 训练 | mAP50 **0.8214**（最优 ep62，早停于 ep92，58.4 分钟） |
-| test_pku | mAP50 **0.8488** |
-| test_pcb2025 | mAP50 **0.7743** |
-| 时延拆解 | 🔴 **58% 花在 JPEG 解码，模型推理只占 22%** |
+| **mAP50** | **0.8191** |
+| mAP50-95 | 0.3554 |
+| Precision | 0.8291 |
+| Recall | 0.7772 |
 
-### 🔴 对第二阶段最关键的发现
+逐类最差 `short` 0.7098，最好 `spur` 0.8856。
+分辨率扫描峰值在 **imgsz=608**（0.8399），640 反而回落。
 
-**分辨率几乎不影响本地时延**（320→640 像素翻 4 倍，时延仅 23.9→27.9 ms），
-**但强烈影响传输量**（22.3→67.7 KB，3 倍）。
+### 🔴 对第二阶段最关键的发现：时延由解码主导，不由分辨率主导
 
-→ **分辨率管"带宽"，放置管"时延"。** 若按最初设想用降分辨率省本地时延，收益极小、精度代价极大（320 时 mAP50 掉到 0.48）。
+imgsz=320 时延拆解：**JPEG 解码 15.6ms (58%)** > 模型推理 5.9ms (22%) >
+NMS 3.5ms (13%) > 预处理 1.1ms (4%)
 
-### 新增命令
+- 320→640 像素翻 4 倍，总时延只从 23.9 → 27.9 ms
+- 但 JPEG 传输量从 22.3 → 67.7 KB（3 倍）
 
-```bash
-python -m pcbvis unified       # 下载 PCB-Defect 2025 + 构建统一数据集
-python -m pcbvis profile       # 每个 imgsz 同时测 精度+时延+JPEG字节
-python -m pcbvis latency       # 交错法只测时延（抗热漂移）
-python -m pcbvis train --data data/unified/data.yaml --name unified_yolo11n
-```
+→ **分辨率管"带宽"，放置管"时延"。** 若按最初设想用降分辨率省本地时延，
+收益极小、精度代价极大（320 时 mAP50 掉到 0.48）。
 
-### 两套数据的注意点
+### 当前数据集
 
-- **PKU 缺陷是 Photoshop 合成的**，PCB2025 是**真实化学蚀刻**的，两者结论不能直接外推到产线。
-- **test_pcb2025 只有 35 张**，指标方差大。
-- 两个测试集都在 **imgsz=608** 达峰而非 640 —— 可能是噪声，需多 seed 才能定论（**这是推测，未证实**）。
-
----
+**只用 PKU-Market-PCB**（`RobotHuman/PCB_defect`），6 类：
+`missing_hole` `mouse_bite` `open_circuit` `short` `spur` `spurious_copper`
 
 ---
 
@@ -64,16 +81,16 @@ python -m pcbvis train --data data/unified/data.yaml --name unified_yolo11n
 | 代码模块 | ✅ `pcbvis/` 下 8 个模块全部写完 |
 | 预训练权重 | ✅ `models/yolo11n.pt`（5.4 MB） |
 | **数据集下载** | ✅ **693/693 张**（约 970 MB） |
-| **格式转换** | ✅ **2953 个缺陷框**，`data/pcb_yolo/` 已生成 |
-| 模型微调 | ❌ **尚未开始 ← 下一步** |
-| 评估 / 推理 | ❌ 尚未开始 |
+| **格式转换** | ✅ **2953 个缺陷框**，`data/pcb_yolo/` 已按母板重新划分 |
+| 模型微调 | ✅ **已完成**（防泄漏划分，100 epochs，mAP50 0.7800 val） |
+| 评估 / 推理 | ✅ **已完成**（test mAP50 0.8191） |
 
 ### 数据转换的实测结果
 
 ```
 有效图片      : 693
 缺陷框总数    : 2953          （平均 4.26 框/图）
-训练/验证/测试: 483 / 102 / 108
+训练/验证/测试: 480 / 90 / 123   （按母板 block 划分，非随机）
 各类别框数    : missing_hole 497 | mouse_bite 492 | open_circuit 482
                 short 491 | spur 488 | spurious_copper 503
 缺陷框宽度    : 中位数 2.37% 图宽（3034px 上约 72px）
@@ -99,21 +116,22 @@ python -m pcbvis train --data data/unified/data.yaml --name unified_yolo11n
 
 ## 2. 下一步怎么做
 
-数据已经就绪，**直接训练即可**：
+第一阶段已全部完成。要复现或继续：
 
 ```bash
 # 在项目根目录下执行
-# 微调（M4 上约 30~60 分钟）
-.venv/bin/python -m pcbvis train
-
-# 评估
-.venv/bin/python -m pcbvis eval
-
-# 推理出带框图
-.venv/bin/python -m pcbvis predict --imgsz 640
+.venv/bin/python -m pcbvis prepare --no-download   # 重建数据集（含防泄漏自检）
+.venv/bin/python -m pcbvis train                   # 微调（约 50~100 分钟，取决于是否卡顿）
+.venv/bin/python -m pcbvis eval --split test       # test 集评估
+.venv/bin/python -m pcbvis predict --imgsz 640     # 推理出带框图
+.venv/bin/python -m pcbvis profile --splits test   # 10 个分辨率：精度+时延+JPEG字节
 ```
 
 **判断训练成功的标志**：结束时 mAP50 **明显 > 0.5**。若接近 0，先回头查标注转换和类别映射，不要急着调参。
+
+> **耗时提示**：本机（MacBook Air）在训练中会随机出现 6~9 分钟的 I/O 卡顿，
+> 实测 100 轮里有 7 轮中招，占总耗时 55%。**不是热降频**（`pmset -g therm` 已确认无 thermal warning），
+> 推测是 Spotlight 索引，但未证实。精度不受影响，只影响等待时间。
 
 > 可选清理：`rm -rf /tmp/pcbvis_trainsmoke /tmp/pcbvis_trainout`（冒烟测试的临时目录）
 
@@ -130,7 +148,7 @@ python -m pcbvis train --data data/unified/data.yaml --name unified_yolo11n
 类别表、划分比例、随机种子都在 YAML 里。**改类别或换数据集只改这里**。
 
 ### ③ `data_prep.py` —— 本阶段最核心的模块
-做四件事：下载 → 解析 XML → 分层划分 → 写 YOLO 格式。重点读 `_parse_one()`，它把 VOC 的绝对像素坐标转成 YOLO 的归一化 `cx cy w h`。
+做四件事：下载 → 解析 XML → **按母板 block 划分** → 写 YOLO 格式。重点读 `_parse_one()`，它把 VOC 的绝对像素坐标转成 YOLO 的归一化 `cx cy w h`；以及 `split_records()`，它实现防泄漏划分并做自检。
 
 **里面藏着两个真实的坑，注释里也标了：**
 - XML 里的 `<filename>` 字段（`01_missing_hole_01.jpg`）**和实际文件名（`missing_hole01.jpg`）对不上**。所以配对只能按文件名词干做，信 `<filename>` 会直接崩。
@@ -214,7 +232,7 @@ python -m pcbvis train --data data/unified/data.yaml --name unified_yolo11n
 
 1. `_parse_one()` 里为什么用 PIL 读图片尺寸，而不是直接用 XML 里的 `<size>`？两者不一致时会发生什么？
 2. YOLO 的标签为什么是归一化的 `cx cy w h` 而不是绝对 `xmin ymin xmax ymax`？归一化带来什么好处？
-3. 划分数据时为什么按类别分层，而不是把所有图混在一起随机分？
+3. **划分数据时为什么要按「母板 block」而不是按图片随机分？** 想想 `missing_hole01.jpg` 和 `mouse_bite01.jpg` 是什么关系（提示：它们在非缺陷区域的像素完全相同）。如果随机分，模型会学到什么、测出来的又是什么？
 4. `predict.py` 里为什么要先做一次「预热」推理？不预热会怎样？（提示：看 `latency_ms` 的 min 和 max 差距）
 5. 缺陷占图宽 2.34% 这个事实，会怎么影响 imgsz=320 时的召回率？为什么？
 

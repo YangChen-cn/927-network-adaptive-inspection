@@ -86,7 +86,7 @@ def run(
     cfg = load_config(config)
     paths.ensure_dirs()
 
-    # 允许指定数据集（unified 数据集用 data/unified/data.yaml）
+    # 允许指定数据集（默认 data/pcb_yolo/data.yaml）
     data_yaml = Path(data) if data else (paths.DATA_YOLO / "data.yaml")
     if not data_yaml.exists():
         raise FileNotFoundError(

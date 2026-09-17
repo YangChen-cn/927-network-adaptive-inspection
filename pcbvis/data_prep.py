@@ -234,10 +234,49 @@ def collect_records(cfg: dict, limit: int | None = None) -> tuple[list[Record], 
 # --------------------------------------------------------------------------- #
 # 划分
 # --------------------------------------------------------------------------- #
+def _block_index(stem: str, blocks: list[list[int]]) -> int:
+    """图片序号落在第几块母板（从 1 开始）。"""
+    idx = int("".join(ch for ch in stem if ch.isdigit()))
+    for i, (lo, hi) in enumerate(blocks, 1):
+        if lo <= idx <= hi:
+            return i
+    raise ValueError(f"图片序号 {idx}（{stem}）不在任何母板 block 范围内")
+
+
 def split_records(
-    records: list[Record], ratios: dict, seed: int
+    records: list[Record],
+    ratios: dict,
+    seed: int,
+    blocks: list[list[int]] | None = None,
+    block_split: dict | None = None,
 ) -> dict[str, list[Record]]:
-    """按「图片所在类别目录」分层划分，保证每类在各子集中比例一致。"""
+    """划分 train/val/test。
+
+    【默认】按 PCB 母板 block 划分 —— 整块母板只进一个 split。
+    这是防泄漏的关键：本数据集只有 10 块母板，同母板的图在非缺陷区域
+    逐像素完全相同，若按图片随机划分会让同一块板同时进 train 和 test，
+    模型靠"认板子"就能拿高分，指标虚高。
+
+    未提供 blocks/block_split 时，回退到按类别目录分层随机划分
+    （保留该路径仅作兼容，不推荐使用）。
+    """
+    if blocks and block_split:
+        block2split: dict[int, str] = {}
+        for sp, idxs in block_split.items():
+            for i in idxs:
+                block2split[int(i)] = sp
+
+        missing = set(range(1, len(blocks) + 1)) - set(block2split)
+        if missing:
+            raise ValueError(f"以下母板 block 未被分配到任何 split: {sorted(missing)}")
+
+        out: dict[str, list[Record]] = {s: [] for s in paths.SPLITS}
+        for r in records:
+            bi = _block_index(r.image.stem, blocks)
+            out[block2split[bi]].append(r)
+        return out
+
+    # ---- 回退：按类别目录分层随机划分（有泄漏风险，仅在无母板信息时用）----
     by_dir: dict[str, list[Record]] = defaultdict(list)
     for r in records:
         by_dir[r.image.parent.name].append(r)
@@ -309,7 +348,12 @@ def write_yolo(
 # --------------------------------------------------------------------------- #
 # 入口
 # --------------------------------------------------------------------------- #
-def _report(records: list[Record], splits: dict[str, list[Record]], stats: Counter) -> None:
+def _report(
+    records: list[Record],
+    splits: dict[str, list[Record]],
+    stats: Counter,
+    blocks: list[list[int]] | None = None,
+) -> None:
     classes_seen = Counter()
     box_sizes: list[float] = []
     for r in records:
@@ -342,6 +386,17 @@ def _report(records: list[Record], splits: dict[str, list[Record]], stats: Count
             print(f"    {k}: {v}")
     if stats.get("size_mismatch"):
         print(f"\n  ⚠ {stats['size_mismatch']} 张图的 XML 声明尺寸与实际不一致（已按实际尺寸处理）")
+
+    # 防泄漏自检：同一块母板是否跨 split
+    if blocks:
+        blk = lambda r: _block_index(r.image.stem, blocks)  # noqa: E731
+        tr = {blk(r) for r in splits["train"]}
+        va = {blk(r) for r in splits["val"]}
+        te = {blk(r) for r in splits["test"]}
+        leak = (tr & te) | (tr & va) | (va & te)
+        print(f"\n  母板划分（防泄漏，共 {len(blocks)} 块母板）:")
+        print(f"    train {sorted(tr)} | val {sorted(va)} | test {sorted(te)}")
+        print(f"    跨 split 共用的母板: {sorted(leak) if leak else '无 ✅'}")
     print()
 
 
@@ -370,9 +425,16 @@ def run(
     if not records:
         raise RuntimeError("没有解析到任何有效标注，请检查下载是否完整")
 
-    splits = split_records(records, cfg["dataset"]["split"], cfg["dataset"]["seed"])
+    dcfg = cfg["dataset"]
+    splits = split_records(
+        records,
+        dcfg["split"],
+        dcfg["seed"],
+        blocks=dcfg.get("template_blocks"),
+        block_split=dcfg.get("block_split"),
+    )
     yaml_path = write_yolo(cfg, splits)
-    _report(records, splits, stats)
+    _report(records, splits, stats, dcfg.get("template_blocks"))
 
     print(f"  data.yaml -> {yaml_path}\n")
     return yaml_path

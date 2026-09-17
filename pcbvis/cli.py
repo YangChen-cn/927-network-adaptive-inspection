@@ -104,15 +104,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rounds", type=int, default=5, help="轮询轮数")
     p.add_argument("--tag", default=None)
 
-    # --- unified ---
-    p = sub.add_parser(
-        "unified",
-        help="构建统一数据集（PKU + PCB-Defect 2025），含防泄漏划分与两个独立 test set",
-    )
-    p.add_argument("--config", default=None, help="默认 configs/unified.yaml")
-    p.add_argument("--no-download", action="store_true", help="跳过下载，只做转换")
-    p.add_argument("--force", action="store_true", help="强制重新下载")
-
     return parser
 
 
@@ -220,15 +211,6 @@ def main(argv: list[str] | None = None) -> int:
             sample=args.sample,
             rounds=args.rounds,
             tag=args.tag,
-        )
-
-    elif cmd == "unified":
-        from . import unified as unified_mod
-
-        unified_mod.run(
-            config=args.config,
-            do_download=not args.no_download,
-            force=args.force,
         )
 
     return 0

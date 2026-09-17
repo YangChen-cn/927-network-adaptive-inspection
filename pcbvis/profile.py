@@ -174,8 +174,8 @@ def _resolve_image_dir(data_yaml: Path, split: str) -> Path:
     """从 data.yaml 里解析出某个 split 的图片目录。
 
     data.yaml 的 `path` 是数据集根，`train/val/test` 是相对它的路径。
-    这里以 yaml 为准而不是猜目录层级 —— 因为 unified 数据集会有多个
-    独立的 test yaml，目录布局不一定和 pcb_yolo 一样。
+    这里以 yaml 为准而不是猜目录层级 —— 目录布局可能和 pcb_yolo 不同，
+    也可能存在多个指向不同 test 子集的 yaml。
     """
     import yaml as _yaml
 
