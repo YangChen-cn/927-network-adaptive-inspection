@@ -40,8 +40,17 @@ def run(
     print("=" * 62)
 
     model = YOLO(str(wpath))
+    # 显式指定输出目录，否则 ultralytics 会在项目根建 runs/detect/val，
+    # 跑 sweep 时每次都往那儿写，污染工作目录
     metrics = model.val(
-        data=str(data_yaml), imgsz=imgsz, split=split, device=dev, verbose=False
+        data=str(data_yaml),
+        imgsz=imgsz,
+        split=split,
+        device=dev,
+        verbose=False,
+        project=str(paths.RESULTS_EVAL),
+        name=f"val_imgsz{imgsz}_{split}",
+        exist_ok=True,
     )
 
     box = metrics.box

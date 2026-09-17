@@ -115,6 +115,7 @@ def run(
         patience=patience,
         project=str(paths.RESULTS_TRAIN),
         name=name,
+        deterministic=False,
         exist_ok=True,
         plots=True,
         val=True,
