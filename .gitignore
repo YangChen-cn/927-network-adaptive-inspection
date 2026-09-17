@@ -1,0 +1,16 @@
+# --- 环境 ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# --- 数据与权重（体积大，不入库；用 pcbvis prepare 重新生成）---
+data/
+models/
+results/
+
+# --- ultralytics 默认会往 CWD 写的东西 ---
+runs/
+yolo*.pt
+*.cache

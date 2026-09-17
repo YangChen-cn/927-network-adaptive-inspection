@@ -1,0 +1,22 @@
+# 项目 927 — 第一阶段依赖
+# 注意：本机为 Apple Silicon (arm64) + Python 3.14，
+# 以下包均已确认存在 macOS arm64 轮子（opencv 通过 cp37-abi3 向前兼容）。
+
+# --- 深度学习 / 检测 ---
+ultralytics>=8.3.0
+torch>=2.6.0
+torchvision>=0.21.0
+
+# --- 数据集下载 ---
+huggingface_hub>=0.24.0
+
+# --- 图像 / 数据处理 ---
+opencv-python>=4.10.0
+numpy>=1.26.0
+pillow>=10.0.0
+pyyaml>=6.0
+
+# --- 指标 / 可视化 ---
+matplotlib>=3.8.0
+pandas>=2.0.0
+tqdm>=4.66.0

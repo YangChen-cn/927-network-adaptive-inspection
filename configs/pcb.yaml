@@ -1,0 +1,32 @@
+# PCB 缺陷检测数据集配置
+# 数据来源：RobotHuman/PCB_defect (即 PKU-Market-PCB, Huang et al. 2019)
+# HuggingFace 公开数据集，下载无需登录。
+
+dataset:
+  repo_id: "RobotHuman/PCB_defect"
+  name: "pcb_defect"
+
+  # 类别表：顺序固定，索引即为 YOLO 的 class id。
+  # 必须以 XML 里的 <name> 为准（小写 + 下划线），不要从文件夹名推断。
+  classes:
+    - missing_hole
+    - mouse_bite
+    - open_circuit
+    - short
+    - spur
+    - spurious_copper
+
+  # 标注文件名后缀：X.jpg <-> X_annotation.xml
+  annotation_suffix: "_annotation.xml"
+
+  # 该镜像的图片总数，用于判断下载是否完整（不足则自动重试续传）
+  expected_images: 693
+
+  # 划分比例（按类别文件夹分层抽样）
+  split:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+  # 固定种子，保证划分可复现
+  seed: 42
