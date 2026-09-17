@@ -78,6 +78,7 @@ def run(
     workers: int = 4,
     patience: int = 30,
     config: Path | str | None = None,
+    data: Path | str | None = None,
 ) -> Path:
     """微调并返回 best.pt 路径。"""
     from ultralytics import YOLO
@@ -85,7 +86,8 @@ def run(
     cfg = load_config(config)
     paths.ensure_dirs()
 
-    data_yaml = paths.DATA_YOLO / "data.yaml"
+    # 允许指定数据集（unified 数据集用 data/unified/data.yaml）
+    data_yaml = Path(data) if data else (paths.DATA_YOLO / "data.yaml")
     if not data_yaml.exists():
         raise FileNotFoundError(
             f"未找到 {data_yaml}，请先运行: python -m pcbvis prepare"

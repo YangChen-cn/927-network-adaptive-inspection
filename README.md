@@ -5,7 +5,9 @@ PCB 缺陷视觉检测原型。本仓库当前处于**第一阶段**：在 Mac �
 > 第二阶段（device/edge 双端拆分、网络模拟、自适应放置策略、Dashboard、多策略对比）尚未实现，但代码结构已为其预留位置。
 
 📌 **当前进度与恢复步骤见 [`HANDOVER.md`](HANDOVER.md)**
-📊 **训练与实验数据汇总见 [`RESULTS.md`](RESULTS.md)** —— mAP50 = 0.9266，含逐类指标与「精度 vs 分辨率」核心实验。
+📊 **训练与实验数据汇总见 [`RESULTS.md`](RESULTS.md)** —— unified 模型（PKU + PCB-Defect 2025，7 类）mAP50 = 0.8214，含两个独立测试集结果与「精度 vs 分辨率」核心实验。
+
+> ⚠️ 早期 PKU-only 的 mAP50 = 0.9266 **因数据泄漏而虚高**，原因与更正见 `RESULTS.md` 顶部勘误。
 
 ---
 
